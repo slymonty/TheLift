@@ -6,6 +6,7 @@ namespace TheLift.CombatCore
         private readonly ActionConfig _actionConfig;
         private readonly DefenceConfig _defenceConfig;
         private readonly CompromisedConfig _compromisedConfig;
+        private readonly ArchetypeDefinition _archetypeDefinition;
 
         private int _framesSinceLastStaminaSpend;
         private bool _isExhausted;
@@ -50,6 +51,13 @@ namespace TheLift.CombatCore
         public bool IsProne => _proneFramesRemaining > 0;
         public int ProneFramesRemaining => _proneFramesRemaining;
 
+        // Part VII — this fighter's body ("Six hand-tuned bodies"). Composure/Stamina/
+        // Regen/DamageModifier are derived from it at construction; the remaining
+        // special-rule fields are exposed for future systems (see ArchetypeDefinition).
+        // Named Body, not Archetype, to avoid shadowing the Archetype enum type within
+        // this class (the constructor parameter below is typed Archetype).
+        public ArchetypeDefinition Body => _archetypeDefinition;
+
         // §4.10 — Concussed and Down are an exhaustive "Cling only" restriction: no
         // Snag, no Post up, no Drag down, regardless of any other state.
         private bool IsClingOnlyCompromised => RattledState == RattledState.Concussed || RattledState == RattledState.Down;
@@ -83,16 +91,23 @@ namespace TheLift.CombatCore
             }
         }
 
-        public Fighter(FighterConfig config = null, ActionConfig actionConfig = null, DefenceConfig defenceConfig = null, CompromisedConfig compromisedConfig = null)
+        public Fighter(
+            FighterConfig config = null,
+            ActionConfig actionConfig = null,
+            DefenceConfig defenceConfig = null,
+            CompromisedConfig compromisedConfig = null,
+            Archetype archetype = Archetype.Bruiser,
+            ArchetypeConfig archetypeConfig = null)
         {
             _config = config ?? new FighterConfig();
             _actionConfig = actionConfig ?? new ActionConfig();
             _defenceConfig = defenceConfig ?? new DefenceConfig();
             _compromisedConfig = compromisedConfig ?? new CompromisedConfig();
+            _archetypeDefinition = (archetypeConfig ?? new ArchetypeConfig()).GetDefinition(archetype);
 
-            Stamina = _config.MaxStamina;
+            Stamina = _archetypeDefinition.MaxStamina;
             Balance = _config.MaxBalance;
-            Composure = _config.MaxComposure;
+            Composure = _archetypeDefinition.MaxComposure;
             Rattled = 0f;
             Adrenaline = 0f;
             _framesSinceLastStaminaSpend = _config.StaminaRegenDelayFrames;
@@ -119,7 +134,7 @@ namespace TheLift.CombatCore
         {
             if (amount <= 0f) return;
 
-            Stamina = Clamp(Stamina - amount, 0f, _config.MaxStamina);
+            Stamina = Clamp(Stamina - amount, 0f, _archetypeDefinition.MaxStamina);
             _framesSinceLastStaminaSpend = 0;
 
             if (Stamina <= 0f)
@@ -137,7 +152,7 @@ namespace TheLift.CombatCore
         public void DamageComposure(float amount)
         {
             if (amount <= 0f) return;
-            Composure = Clamp(Composure - amount, 0f, _config.MaxComposure);
+            Composure = Clamp(Composure - amount, 0f, _archetypeDefinition.MaxComposure);
         }
 
         public void AddRattled(float amount)
@@ -207,7 +222,8 @@ namespace TheLift.CombatCore
 
             if (target.IsSlipping) return; // §4.6 — Slip beats strikes only
 
-            float multiplier = IsExhausted ? 0.5f : 1f; // §4.3 — Exhausted: damage -50%
+            // §4.3 — Exhausted: damage -50%. Part VII — archetype DamageModifier.
+            float multiplier = (IsExhausted ? 0.5f : 1f) * _archetypeDefinition.DamageModifier;
 
             float composureDamage = _currentAction.ComposureDamage * multiplier;
             float balanceDamage = _currentAction.BalanceDamage * multiplier;
@@ -481,8 +497,8 @@ namespace TheLift.CombatCore
                 return;
             }
 
-            float regenPerFrame = _config.StaminaRegenPerSecond / _config.FramesPerSecond;
-            Stamina = Clamp(Stamina + regenPerFrame, 0f, _config.MaxStamina);
+            float regenPerFrame = _archetypeDefinition.StaminaRegenPerSecond / _config.FramesPerSecond;
+            Stamina = Clamp(Stamina + regenPerFrame, 0f, _archetypeDefinition.MaxStamina);
 
             // Hysteresis: Exhausted was set at 0 stamina and only clears at the
             // threshold, not the moment stamina ticks above zero (§4.3).

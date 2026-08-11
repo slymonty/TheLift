@@ -4,14 +4,14 @@ namespace TheLift.CombatCore
     {
         public int FramesPerSecond = 60;
 
-        public float MaxStamina = 100f;
+        // Part VII — MaxStamina, MaxComposure, and StaminaRegenPerSecond are archetype-
+        // specific (ArchetypeDefinition) and no longer live here. Balance and Rattled
+        // have no archetype column in the bible and stay universal.
         public float MaxBalance = 100f;
-        public float MaxComposure = 100f;
         public float MaxRattled = 100f;
         public float MaxAdrenaline = 100f;
 
         // §4.2 / §4.3 — stamina regen pauses after a spend and resumes after this delay.
-        public float StaminaRegenPerSecond = 14f;
         public float StaminaRegenDelaySeconds = 1.8f;
 
         public float BalanceRegenPerSecond = 40f;
