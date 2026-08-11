@@ -5,6 +5,7 @@ namespace TheLift.CombatCore
         private readonly FighterConfig _config;
         private readonly ActionConfig _actionConfig;
         private readonly DefenceConfig _defenceConfig;
+        private readonly CompromisedConfig _compromisedConfig;
 
         private int _framesSinceLastStaminaSpend;
         private bool _isExhausted;
@@ -22,6 +23,10 @@ namespace TheLift.CombatCore
         private bool _isCovering;
         private bool _isGivingGround;
         private TieUp _activeTieUp;
+
+        private int _proneFramesRemaining;
+        private int _clingChainCount;
+        private int _framesSinceLastClingEnded;
 
         public float Stamina { get; private set; }
         public float Balance { get; private set; }
@@ -41,6 +46,19 @@ namespace TheLift.CombatCore
         public bool IsGivingGround => _isGivingGround;
         public bool IsTiedUp => _activeTieUp != null && _activeTieUp.IsActive;
         public TieUp ActiveTieUp => _activeTieUp;
+
+        public bool IsProne => _proneFramesRemaining > 0;
+        public int ProneFramesRemaining => _proneFramesRemaining;
+
+        // §4.10 — Concussed and Down are an exhaustive "Cling only" restriction: no
+        // Snag, no Post up, no Drag down, regardless of any other state.
+        private bool IsClingOnlyCompromised => RattledState == RattledState.Concussed || RattledState == RattledState.Down;
+
+        // §4.9 — eligible to Cling: Dazed, Concussed, and Down all list it; Exhausted
+        // "also counts as Compromised" and Cling is the one verb present at every
+        // Rattled-based tier, so it is extended here as Exhausted's concrete effect.
+        public bool CanCling =>
+            RattledState == RattledState.Dazed || IsClingOnlyCompromised || IsExhausted;
 
         public AdrenalineState AdrenalineState
         {
@@ -65,11 +83,12 @@ namespace TheLift.CombatCore
             }
         }
 
-        public Fighter(FighterConfig config = null, ActionConfig actionConfig = null, DefenceConfig defenceConfig = null)
+        public Fighter(FighterConfig config = null, ActionConfig actionConfig = null, DefenceConfig defenceConfig = null, CompromisedConfig compromisedConfig = null)
         {
             _config = config ?? new FighterConfig();
             _actionConfig = actionConfig ?? new ActionConfig();
             _defenceConfig = defenceConfig ?? new DefenceConfig();
+            _compromisedConfig = compromisedConfig ?? new CompromisedConfig();
 
             Stamina = _config.MaxStamina;
             Balance = _config.MaxBalance;
@@ -87,11 +106,13 @@ namespace TheLift.CombatCore
             TickRattled();
             TickActionState();
             if (_slipFramesRemaining > 0) _slipFramesRemaining--;
+            if (_proneFramesRemaining > 0) _proneFramesRemaining--;
+            _framesSinceLastClingEnded++;
             // Composure never regenerates (items only, not modelled yet).
             // Adrenaline falls only out of combat (§4.4) — there is no combat state
             // to be "out of" yet, so it holds until a later phase adds one.
-            // TieUp/Grapple are paired states shared by two fighters and are ticked
-            // externally by the caller, once per frame, not from here (§4.6/§4.7).
+            // TieUp/Grapple/Cling are paired states shared by two fighters and are
+            // ticked externally by the caller, once per frame, not from here (§4.6/§4.7/§4.9).
         }
 
         public void SpendStamina(float amount)
@@ -306,11 +327,112 @@ namespace TheLift.CombatCore
             _isGivingGround = false;
         }
 
+        // §4.8 — "Knocked-down players are prone ~2s." Interrupts whatever this fighter
+        // was doing, the same way Stagger does; Prone itself is tracked as an independent
+        // timer (like Slip), not a distinct ActionPhase, since a fighter can be knocked
+        // prone by something unrelated to a Heavy stagger.
+        public void KnockDown(int frames)
+        {
+            _proneFramesRemaining = frames;
+            _actionPhase = ActionPhase.Neutral;
+            _framesInPhase = 0;
+            _currentAction = null;
+            _currentStartupFrames = 0;
+            _lightChainCount = 0;
+            _isCovering = false;
+            _isGivingGround = false;
+        }
+
+        // §4.9 — SNAG: 15 stamina, from prone/kneeling (Prone, or Dazed's knee-drop).
+        // Concussed/Down override to "Cling only" even if also Prone. Target Balance -60,
+        // amplified if the target was sprinting (no exact multiplier given — see config).
+        public bool TrySnag(Fighter target, bool targetIsSprinting = false)
+        {
+            if (target == null) return false;
+            if (IsClingOnlyCompromised) return false;
+
+            bool eligible = IsProne || RattledState == RattledState.Dazed;
+            if (!eligible) return false;
+
+            if (Stamina < _compromisedConfig.SnagStaminaCost) return false;
+            SpendStamina(_compromisedConfig.SnagStaminaCost);
+
+            float balanceDamage = _compromisedConfig.SnagBalanceDamage;
+            if (targetIsSprinting) balanceDamage *= _compromisedConfig.SnagSprintingMultiplier;
+            target.DamageBalance(balanceDamage);
+
+            return true;
+        }
+
+        // §4.9 — DRAG DOWN: 22 stamina, from Prone. Both fighters end up prone.
+        public bool TryDragDown(Fighter target)
+        {
+            if (target == null) return false;
+            if (IsClingOnlyCompromised) return false;
+            if (!IsProne) return false;
+
+            if (Stamina < _compromisedConfig.DragDownStaminaCost) return false;
+            SpendStamina(_compromisedConfig.DragDownStaminaCost);
+
+            target.KnockDown(_compromisedConfig.DragDownProneFrames);
+            return true;
+        }
+
+        // §4.9 — POST UP: 10 stamina, only while Dazed, requires nearby furniture
+        // (modelled as a caller-supplied flag — no positional system exists here).
+        // Recovery -30%: shortens the Prone timer, if one is currently running.
+        public bool TryPostUp(bool nearbyFurniture)
+        {
+            if (RattledState != RattledState.Dazed) return false;
+            if (!nearbyFurniture) return false;
+            if (Stamina < _compromisedConfig.PostUpStaminaCost) return false;
+
+            SpendStamina(_compromisedConfig.PostUpStaminaCost);
+
+            if (IsProne)
+            {
+                _proneFramesRemaining = (int)System.Math.Round(
+                    _proneFramesRemaining * (1f - _compromisedConfig.PostUpRecoveryReductionFraction));
+            }
+
+            return true;
+        }
+
+        // §4.9 — STOMP-OFF: only breaks a Cling; the clinger can always re-grab. A
+        // teammate pays 12 and 0.5s; the clung fighter can pay their own way out at
+        // 15 and slower — but only if they aren't themselves Dazed and up, since that
+        // tier's "Can do" list doesn't include Stomp-off ("the cheap fix requires a
+        // teammate"). Hits Balance, not Composure; adds Rattled, not damage.
+        public bool TryStompOff(Cling cling, bool isSelf)
+        {
+            if (cling == null || !cling.IsActive) return false;
+            if (RattledState == RattledState.Dazed || IsClingOnlyCompromised) return false;
+            if (isSelf && cling.Target != this) return false;
+            if (!isSelf && this == cling.Clinger) return false;
+
+            float cost = isSelf ? _compromisedConfig.StompOffSelfStaminaCost : _compromisedConfig.StompOffTeammateStaminaCost;
+            if (Stamina < cost) return false;
+
+            SpendStamina(cost);
+            cling.Clinger.DamageBalance(_compromisedConfig.StompOffBalanceDamage);
+            cling.Clinger.AddRattled(_compromisedConfig.StompOffRattledDamage);
+            cling.End();
+
+            return true;
+        }
+
         // A fighter can only commit to something new from a clean Neutral: not mid-action,
-        // not Staggered, not holding a §4.6 stance, and not locked in a paired tie-up.
+        // not Staggered, not holding a §4.6 stance, not locked in a paired tie-up, not
+        // Prone, and not Dazed/Concussed/Down — §4.10's "Can do" column for those tiers
+        // is an exhaustive list (Snag/Cling/Post up, or Cling only) that does not include
+        // strikes or any other normal action.
         private bool IsFreeToAct()
         {
-            return _actionPhase == ActionPhase.Neutral && !IsSlipping && !_isCovering && !_isGivingGround && !IsTiedUp;
+            return _actionPhase == ActionPhase.Neutral
+                && !IsSlipping && !_isCovering && !_isGivingGround && !IsTiedUp
+                && !IsProne
+                && RattledState != RattledState.Dazed
+                && !IsClingOnlyCompromised;
         }
 
         internal bool CanEnterTieUp() => IsFreeToAct();
@@ -323,6 +445,25 @@ namespace TheLift.CombatCore
         internal void ExitTieUp()
         {
             _activeTieUp = null;
+        }
+
+        // §4.9 — "Escalating cost on re-Cling (8 -> 12 -> 18/sec)". Frame-boundary
+        // convention: the 10s window is valid on ticks 0..N-1 and stale at tick N.
+        internal int BeginClingChain(CompromisedConfig config)
+        {
+            if (_clingChainCount > 0 && _framesSinceLastClingEnded >= config.ClingChainWindowFrames)
+            {
+                _clingChainCount = 0; // window expired -- this is a fresh chain
+            }
+
+            int tierIndex = _clingChainCount > 2 ? 2 : _clingChainCount;
+            _clingChainCount = _clingChainCount >= 2 ? 2 : _clingChainCount + 1;
+            return tierIndex;
+        }
+
+        internal void EndClingChain()
+        {
+            _framesSinceLastClingEnded = 0;
         }
 
         private void TickStamina()
