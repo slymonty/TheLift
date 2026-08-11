@@ -1,6 +1,6 @@
 ﻿<Solution>
   <Project Path="CombatCore.csproj" />
   <Project Path="Assembly-CSharp-Editor.csproj" />
-  <Project Path="Assembly-CSharp.csproj" />
   <Project Path="CombatCore.Tests.csproj" />
+  <Project Path="Assembly-CSharp.csproj" />
 </Solution>
