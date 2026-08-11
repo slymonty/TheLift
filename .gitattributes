@@ -1,0 +1,90 @@
+# ─────────────────────────────────────────────
+# Git LFS tracking for Unity
+# Rename to exactly:  .gitattributes
+# Place in repo root
+#
+# MUST be committed BEFORE adding any assets.
+# LFS does not retroactively convert already-committed files.
+# ─────────────────────────────────────────────
+
+# Force LF endings on text so Windows/Mac don't churn
+* text=auto eol=lf
+
+# ── Unity YAML — keep as TEXT so merges are possible ──
+# Requires "Force Text" asset serialization in Project Settings > Editor
+*.meta       merge=unityyamlmerge eol=lf
+*.unity      merge=unityyamlmerge eol=lf
+*.asset      merge=unityyamlmerge eol=lf
+*.prefab     merge=unityyamlmerge eol=lf
+*.mat        merge=unityyamlmerge eol=lf
+*.anim       merge=unityyamlmerge eol=lf
+*.controller merge=unityyamlmerge eol=lf
+*.overrideController merge=unityyamlmerge eol=lf
+*.physicMaterial merge=unityyamlmerge eol=lf
+*.playable   merge=unityyamlmerge eol=lf
+*.mixer      merge=unityyamlmerge eol=lf
+
+# ── 3D models and animation ──
+*.fbx   filter=lfs diff=lfs merge=lfs -text
+*.FBX   filter=lfs diff=lfs merge=lfs -text
+*.obj   filter=lfs diff=lfs merge=lfs -text
+*.blend filter=lfs diff=lfs merge=lfs -text
+*.dae   filter=lfs diff=lfs merge=lfs -text
+*.3ds   filter=lfs diff=lfs merge=lfs -text
+*.max   filter=lfs diff=lfs merge=lfs -text
+*.ma    filter=lfs diff=lfs merge=lfs -text
+*.mb    filter=lfs diff=lfs merge=lfs -text
+
+# ── Textures and images ──
+*.png  filter=lfs diff=lfs merge=lfs -text
+*.jpg  filter=lfs diff=lfs merge=lfs -text
+*.jpeg filter=lfs diff=lfs merge=lfs -text
+*.tga  filter=lfs diff=lfs merge=lfs -text
+*.tif  filter=lfs diff=lfs merge=lfs -text
+*.tiff filter=lfs diff=lfs merge=lfs -text
+*.psd  filter=lfs diff=lfs merge=lfs -text
+*.bmp  filter=lfs diff=lfs merge=lfs -text
+*.gif  filter=lfs diff=lfs merge=lfs -text
+*.exr  filter=lfs diff=lfs merge=lfs -text
+*.hdr  filter=lfs diff=lfs merge=lfs -text
+*.iff  filter=lfs diff=lfs merge=lfs -text
+*.pict filter=lfs diff=lfs merge=lfs -text
+
+# ── Audio ──
+*.wav  filter=lfs diff=lfs merge=lfs -text
+*.mp3  filter=lfs diff=lfs merge=lfs -text
+*.ogg  filter=lfs diff=lfs merge=lfs -text
+*.aif  filter=lfs diff=lfs merge=lfs -text
+*.aiff filter=lfs diff=lfs merge=lfs -text
+*.flac filter=lfs diff=lfs merge=lfs -text
+
+# ── Video ──
+*.mp4 filter=lfs diff=lfs merge=lfs -text
+*.mov filter=lfs diff=lfs merge=lfs -text
+*.avi filter=lfs diff=lfs merge=lfs -text
+*.webm filter=lfs diff=lfs merge=lfs -text
+
+# ── Fonts ──
+*.ttf filter=lfs diff=lfs merge=lfs -text
+*.otf filter=lfs diff=lfs merge=lfs -text
+
+# ── Archives and prebuilt binaries ──
+*.zip filter=lfs diff=lfs merge=lfs -text
+*.7z  filter=lfs diff=lfs merge=lfs -text
+*.rar filter=lfs diff=lfs merge=lfs -text
+*.dll filter=lfs diff=lfs merge=lfs -text
+*.so  filter=lfs diff=lfs merge=lfs -text
+*.dylib filter=lfs diff=lfs merge=lfs -text
+*.a   filter=lfs diff=lfs merge=lfs -text
+
+# ── Unity packages ──
+*.unitypackage filter=lfs diff=lfs merge=lfs -text
+
+# ─────────────────────────────────────────────
+# NOTE: .meta files are TEXT, not LFS. They must stay
+# diffable and mergeable. Do not add them to LFS.
+#
+# Also set: Project Settings > Editor
+#   Asset Serialization Mode = Force Text
+#   Version Control Mode     = Visible Meta Files
+# ─────────────────────────────────────────────
