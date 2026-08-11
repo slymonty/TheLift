@@ -4,6 +4,7 @@ namespace TheLift.CombatCore
     {
         private readonly FighterConfig _config;
         private readonly ActionConfig _actionConfig;
+        private readonly DefenceConfig _defenceConfig;
 
         private int _framesSinceLastStaminaSpend;
         private bool _isExhausted;
@@ -17,6 +18,11 @@ namespace TheLift.CombatCore
         private int _lightChainCount;
         private int _framesSinceLastLightAction;
 
+        private int _slipFramesRemaining;
+        private bool _isCovering;
+        private bool _isGivingGround;
+        private TieUp _activeTieUp;
+
         public float Stamina { get; private set; }
         public float Balance { get; private set; }
         public float Composure { get; private set; }
@@ -29,6 +35,12 @@ namespace TheLift.CombatCore
         public ActionType? CurrentActionType => _currentAction?.Type;
         public int CurrentStartupFrames => _currentStartupFrames;
         public int LightChainCount => _lightChainCount;
+
+        public bool IsSlipping => _slipFramesRemaining > 0;
+        public bool IsCovering => _isCovering;
+        public bool IsGivingGround => _isGivingGround;
+        public bool IsTiedUp => _activeTieUp != null && _activeTieUp.IsActive;
+        public TieUp ActiveTieUp => _activeTieUp;
 
         public AdrenalineState AdrenalineState
         {
@@ -53,10 +65,11 @@ namespace TheLift.CombatCore
             }
         }
 
-        public Fighter(FighterConfig config = null, ActionConfig actionConfig = null)
+        public Fighter(FighterConfig config = null, ActionConfig actionConfig = null, DefenceConfig defenceConfig = null)
         {
             _config = config ?? new FighterConfig();
             _actionConfig = actionConfig ?? new ActionConfig();
+            _defenceConfig = defenceConfig ?? new DefenceConfig();
 
             Stamina = _config.MaxStamina;
             Balance = _config.MaxBalance;
@@ -73,9 +86,12 @@ namespace TheLift.CombatCore
             TickBalance();
             TickRattled();
             TickActionState();
+            if (_slipFramesRemaining > 0) _slipFramesRemaining--;
             // Composure never regenerates (items only, not modelled yet).
             // Adrenaline falls only out of combat (§4.4) — there is no combat state
             // to be "out of" yet, so it holds until a later phase adds one.
+            // TieUp/Grapple are paired states shared by two fighters and are ticked
+            // externally by the caller, once per frame, not from here (§4.6/§4.7).
         }
 
         public void SpendStamina(float amount)
@@ -116,10 +132,11 @@ namespace TheLift.CombatCore
         }
 
         // §4.5 — a new action can only be committed to from Neutral: not during another
-        // action's Startup/Active/Recovery, and not while Staggered. "No combos" (§4.1).
+        // action's Startup/Active/Recovery, not while Staggered, and not while committed
+        // to a §4.6 defensive stance or a paired tie-up/grapple. "No combos" (§4.1).
         public bool TryStartAction(ActionType type)
         {
-            if (_actionPhase != ActionPhase.Neutral) return false;
+            if (!IsFreeToAct()) return false;
 
             ActionDefinition definition = _actionConfig.GetDefinition(type);
             if (Stamina < definition.StaminaCost) return false;
@@ -155,25 +172,124 @@ namespace TheLift.CombatCore
             return true;
         }
 
-        // Applies this fighter's currently Active action to a target. No-ops outside the
-        // Active window — there is no defence system yet, so a caller must decide the hit
-        // landed and call this only while Active.
+        // Applies this fighter's currently Active action (a strike) to a target. No-ops
+        // outside the Active window — a caller must decide the hit landed and call this
+        // only while Active. §4.6 defence is checked here: Slip beats a strike outright
+        // (never a grapple — grapples resolve through their own methods and do not call
+        // this); Cover reduces but never zeroes the damage. No invincibility frames exist
+        // anywhere (§4.1), so nothing else in this method can produce zero damage.
         public void ResolveHit(Fighter target)
         {
             if (_actionPhase != ActionPhase.Active || _currentAction == null) return;
 
+            if (target.IsSlipping) return; // §4.6 — Slip beats strikes only
+
             float multiplier = IsExhausted ? 0.5f : 1f; // §4.3 — Exhausted: damage -50%
 
-            target.DamageComposure(_currentAction.ComposureDamage * multiplier);
-            target.DamageBalance(_currentAction.BalanceDamage * multiplier);
-
+            float composureDamage = _currentAction.ComposureDamage * multiplier;
+            float balanceDamage = _currentAction.BalanceDamage * multiplier;
             float rattledDamage = _currentAction.RattledDamage * multiplier;
+
+            if (target.IsCovering)
+            {
+                // §4.6 — Cover absorbs ~70%; it never prevents a grapple, and it never
+                // reduces a strike to zero.
+                composureDamage *= _defenceConfig.CoverDamageMultiplier;
+                balanceDamage *= _defenceConfig.CoverDamageMultiplier;
+                rattledDamage *= _defenceConfig.CoverDamageMultiplier;
+                target.SpendStamina(_defenceConfig.CoverStaminaCostPerHit);
+            }
+
+            target.DamageComposure(composureDamage);
+            target.DamageBalance(balanceDamage);
             if (rattledDamage > 0f) target.AddRattled(rattledDamage);
 
             if (_currentAction.Type == ActionType.Heavy)
             {
                 target.Stagger(_actionConfig.HeavyStaggerFrames); // §4.5 — heavies break Balance -> 18f stagger
             }
+        }
+
+        // §4.6 — SLIP: 12 stamina, ~6f window, beats strikes only (a grab still catches
+        // you mid-slip — ResolveHit never checks IsSlipping for grapples). Unavailable
+        // when Flooded; extended here to Gone too, since Gone is strictly more impaired
+        // and Slip is explicitly "the skill-expression move" (fine motor).
+        public bool TrySlip()
+        {
+            if (!IsFreeToAct()) return false;
+            if (AdrenalineState == AdrenalineState.Flooded || AdrenalineState == AdrenalineState.Gone) return false;
+            if (Stamina < _defenceConfig.SlipStaminaCost) return false;
+
+            SpendStamina(_defenceConfig.SlipStaminaCost);
+            _slipFramesRemaining = _defenceConfig.SlipWindowFrames;
+            return true;
+        }
+
+        // §4.6 — COVER: no cost to raise; costs 10 per hit actually absorbed (charged in
+        // ResolveHit). Does not prevent a grapple (§4.7 resolution never checks this).
+        public bool StartCover()
+        {
+            if (!IsFreeToAct()) return false;
+            _isCovering = true;
+            return true;
+        }
+
+        public void StopCover()
+        {
+            _isCovering = false;
+        }
+
+        // §4.6 — GIVE GROUND: free. Can't attack while giving ground (movement/speed is a
+        // Game-layer concern with no representation in CombatCore).
+        public bool StartGivingGround()
+        {
+            if (!IsFreeToAct()) return false;
+            _isGivingGround = true;
+            return true;
+        }
+
+        public void StopGivingGround()
+        {
+            _isGivingGround = false;
+        }
+
+        // §4.6 — SHOVE: 15 stamina, free against an Exhausted target. Hits Balance (no
+        // exact number given — see DefenceConfig.ShoveBalanceDamage).
+        //
+        // Ruling: Shove breaks a clinch immediately for the fighter who pays, when the
+        // target is that fighter's own Tie-up partner. Inside that clinch, Shove always
+        // costs the full 15 — the "free against Exhausted" discount is neutral-only,
+        // since Tie-up is already a stamina contest ("higher remaining stamina wins the
+        // break") and a free exit would undercut it. The other participant gets no free
+        // exit of their own; the hold simply ends for both. A shove against someone who
+        // is tied up with a third fighter does not touch that tie-up at all.
+        public bool TryShove(Fighter target)
+        {
+            if (target == null) return false;
+
+            bool isEscapingSharedTieUp =
+                _activeTieUp != null && _activeTieUp.IsActive &&
+                _activeTieUp.Involves(this) && _activeTieUp.Involves(target);
+
+            if (isEscapingSharedTieUp)
+            {
+                if (Stamina < _defenceConfig.ShoveStaminaCost) return false;
+
+                SpendStamina(_defenceConfig.ShoveStaminaCost);
+                target.DamageBalance(_defenceConfig.ShoveBalanceDamage);
+                _activeTieUp.Break();
+                return true;
+            }
+
+            if (!IsFreeToAct()) return false;
+
+            float cost = target.IsExhausted ? 0f : _defenceConfig.ShoveStaminaCost;
+            if (Stamina < cost) return false;
+
+            SpendStamina(cost);
+            target.DamageBalance(_defenceConfig.ShoveBalanceDamage);
+
+            return true;
         }
 
         public void Stagger(int frames)
@@ -184,6 +300,27 @@ namespace TheLift.CombatCore
             _currentAction = null;
             _currentStartupFrames = 0;
             _lightChainCount = 0;
+            _isCovering = false;
+            _isGivingGround = false;
+        }
+
+        // A fighter can only commit to something new from a clean Neutral: not mid-action,
+        // not Staggered, not holding a §4.6 stance, and not locked in a paired tie-up.
+        private bool IsFreeToAct()
+        {
+            return _actionPhase == ActionPhase.Neutral && !IsSlipping && !_isCovering && !_isGivingGround && !IsTiedUp;
+        }
+
+        internal bool CanEnterTieUp() => IsFreeToAct();
+
+        internal void EnterTieUp(TieUp tieUp)
+        {
+            _activeTieUp = tieUp;
+        }
+
+        internal void ExitTieUp()
+        {
+            _activeTieUp = null;
         }
 
         private void TickStamina()
