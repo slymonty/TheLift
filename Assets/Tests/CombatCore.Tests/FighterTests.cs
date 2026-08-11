@@ -13,15 +13,15 @@ namespace TheLift.CombatCore.Tests
             fighter.SpendStamina(30f); // 100 -> 70
             int delayFrames = config.StaminaRegenDelayFrames;
 
-            for (int frame = 0; frame < delayFrames; frame++)
+            // Frame-boundary convention: a delay of N frames blocks regen on ticks
+            // 0..N-1 and regen resumes on tick N. One tick short of N: still no regen.
+            for (int frame = 0; frame < delayFrames - 1; frame++)
             {
                 fighter.Tick(frame);
             }
-
-            // Delay has elapsed but regen has not yet been applied on this frame.
             Assert.AreEqual(70f, fighter.Stamina, 0.0001f);
 
-            fighter.Tick(delayFrames);
+            fighter.Tick(delayFrames - 1); // the Nth tick: regen resumes on this frame
 
             Assert.Greater(fighter.Stamina, 70f);
         }
@@ -33,11 +33,10 @@ namespace TheLift.CombatCore.Tests
             var fighter = new Fighter(config);
 
             fighter.SpendStamina(30f); // 100 -> 70
-            for (int frame = 0; frame < config.StaminaRegenDelayFrames; frame++)
+            for (int frame = 0; frame < config.StaminaRegenDelayFrames; frame++) // regen ticks once, on the last of these
             {
                 fighter.Tick(frame);
             }
-            fighter.Tick(config.StaminaRegenDelayFrames); // regen ticks once
             float staminaBeforeSecondSpend = fighter.Stamina;
             Assert.Greater(staminaBeforeSecondSpend, 70f);
 

@@ -88,7 +88,7 @@ namespace TheLift.CombatCore.Tests
         }
 
         [Test]
-        public void LightChain_RejectsThirdWithinWindow_ButResetsOneFramePastWindowExpiry()
+        public void LightChain_RejectsThirdWithinWindow_ButResetsAtExactlyWindowExpiry()
         {
             var config = new ActionConfig();
             var fighter = new Fighter();
@@ -103,14 +103,14 @@ namespace TheLift.CombatCore.Tests
             for (int frame = 0; frame < secondLightTotalFrames; frame++) fighter.Tick(frame);
             Assert.AreEqual(ActionPhase.Neutral, fighter.ActionPhase);
 
-            // The window is measured from the end of the second light's Recovery.
-            // At exactly the window length, it has not expired yet: the hard cap
-            // still applies and a third light is rejected outright, not slowed.
-            for (int frame = 0; frame < config.LightComboWindowFrames; frame++) fighter.Tick(frame);
+            // Frame-boundary convention: a window of N frames is valid on ticks 0..N-1
+            // and expires on tick N. One tick short of the window, the hard cap still
+            // applies and a third light is rejected outright, not slowed.
+            for (int frame = 0; frame < config.LightComboWindowFrames - 1; frame++) fighter.Tick(frame);
             Assert.IsFalse(fighter.TryStartAction(ActionType.Light));
 
-            // One frame past the window, the chain is stale: this is a fresh first light.
-            fighter.Tick(config.LightComboWindowFrames);
+            // At exactly the window length, the chain is stale: this is a fresh first light.
+            fighter.Tick(config.LightComboWindowFrames - 1);
             Assert.IsTrue(fighter.TryStartAction(ActionType.Light));
             Assert.AreEqual(config.Light.StartupFrames, fighter.CurrentStartupFrames);
         }

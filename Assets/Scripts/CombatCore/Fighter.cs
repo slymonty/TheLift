@@ -144,7 +144,9 @@ namespace TheLift.CombatCore
             int startupBonus = 0;
             if (type == ActionType.Light)
             {
-                if (_lightChainCount > 0 && _framesSinceLastLightAction > _actionConfig.LightComboWindowFrames)
+                // Frame-boundary convention: a window of N frames is valid on ticks
+                // 0..N-1 and expires on tick N (matches Stagger/Startup/Active/Recovery).
+                if (_lightChainCount > 0 && _framesSinceLastLightAction >= _actionConfig.LightComboWindowFrames)
                 {
                     _lightChainCount = 0; // combo window expired — this is a fresh chain
                 }
@@ -325,9 +327,16 @@ namespace TheLift.CombatCore
 
         private void TickStamina()
         {
+            // Frame-boundary convention: a delay of N frames blocks regen on ticks
+            // 0..N-1 and regen resumes on tick N — the same tick that reaches the
+            // threshold, not the one after (matches Stagger/Startup/Active/Recovery).
             if (_framesSinceLastStaminaSpend < _config.StaminaRegenDelayFrames)
             {
                 _framesSinceLastStaminaSpend++;
+            }
+
+            if (_framesSinceLastStaminaSpend < _config.StaminaRegenDelayFrames)
+            {
                 return;
             }
 
