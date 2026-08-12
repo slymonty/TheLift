@@ -528,6 +528,8 @@ MonoBehaviour:
   fighterController: {fileID: 154310414}
   opponent: {fileID: 769767286}
   controlSlot: 0
+  shoveRange: 2.5
+  giveGroundSpeedMultiplier: 0.5
 --- !u!1 &622337568
 GameObject:
   m_ObjectHideFlags: 0
@@ -785,6 +787,8 @@ MonoBehaviour:
   fighterController: {fileID: 769767287}
   opponent: {fileID: 154310413}
   controlSlot: 1
+  shoveRange: 2.5
+  giveGroundSpeedMultiplier: 0.5
 --- !u!1 &921288976
 GameObject:
   m_ObjectHideFlags: 0

@@ -10,20 +10,37 @@ namespace TheLift.Game
         [SerializeField] private FighterController fighterController;
         [SerializeField] private Transform opponent;
         [SerializeField] private int controlSlot;
+        [SerializeField] private float shoveRange = 2.5f;
+        [SerializeField] private float giveGroundSpeedMultiplier = 0.5f;
 
         private const float ArenaBound = 14f;
+        private const float ShovePushDistance = 2f;
+
+        private FighterController _opponentController;
 
         private ActionType? _pendingIntent;
         private bool _slipPending;
+        private bool _shovePending;
+
+        private void Awake()
+        {
+            if (opponent != null)
+            {
+                _opponentController = opponent.GetComponent<FighterController>();
+            }
+        }
 
         private void Update()
         {
             ReadStrikeInput();
             ReadSlipInput();
+            ReadShoveInput();
         }
 
         private void FixedUpdate()
         {
+            UpdateGiveGround();
+
             Vector2 moveInput = ReadMoveInput();
             Move(moveInput);
             FaceOpponent();
@@ -38,6 +55,12 @@ namespace TheLift.Game
             {
                 fighterController.Fighter.TrySlip();
                 _slipPending = false;
+            }
+
+            if (_shovePending)
+            {
+                ConsumeShove();
+                _shovePending = false;
             }
 
             UpdateCover();
@@ -110,6 +133,85 @@ namespace TheLift.Game
             if (slipPressed) _slipPending = true;
         }
 
+        // CRITICAL: same edge-capture rule as strikes/slip — Shove is a tap.
+        private void ReadShoveInput()
+        {
+            Gamepad gamepad = GetAssignedGamepad();
+
+            bool shovePressed;
+
+            if (gamepad != null)
+            {
+                shovePressed = gamepad.rightShoulder.wasPressedThisFrame;
+            }
+            else
+            {
+                Keyboard keyboard = Keyboard.current;
+                if (keyboard == null) return;
+
+                shovePressed = controlSlot == 0
+                    ? keyboard.rKey.wasPressedThisFrame
+                    : keyboard.yKey.wasPressedThisFrame;
+            }
+
+            if (shovePressed) _shovePending = true;
+        }
+
+        private void ConsumeShove()
+        {
+            if (_opponentController == null) return;
+
+            float distance = Vector3.Distance(transform.position, opponent.position);
+            if (distance > shoveRange) return;
+
+            Fighter myFighter = fighterController.Fighter;
+            Fighter opponentFighter = _opponentController.Fighter;
+
+            if (!myFighter.TryShove(opponentFighter)) return;
+
+            Vector3 away = opponent.position - transform.position;
+            away.y = 0f;
+            if (away.sqrMagnitude < 0.0001f) return;
+
+            Vector3 newPos = opponent.position + away.normalized * ShovePushDistance;
+            newPos.x = Mathf.Clamp(newPos.x, -ArenaBound, ArenaBound);
+            newPos.z = Mathf.Clamp(newPos.z, -ArenaBound, ArenaBound);
+            newPos.y = opponent.position.y;
+
+            opponent.position = newPos;
+        }
+
+        // Give Ground is a hold, polled in FixedUpdate — CombatCore already blocks
+        // attacks while it's active, so only the movement-speed effect lives here.
+        private void UpdateGiveGround()
+        {
+            bool held = IsGiveGroundHeld();
+
+            Fighter fighter = fighterController.Fighter;
+            if (held && !fighter.IsGivingGround)
+            {
+                fighter.StartGivingGround();
+            }
+            else if (!held && fighter.IsGivingGround)
+            {
+                fighter.StopGivingGround();
+            }
+        }
+
+        private bool IsGiveGroundHeld()
+        {
+            Gamepad gamepad = GetAssignedGamepad();
+            if (gamepad != null)
+            {
+                return gamepad.leftTrigger.isPressed;
+            }
+
+            Keyboard keyboard = Keyboard.current;
+            if (keyboard == null) return false;
+
+            return controlSlot == 0 ? keyboard.tKey.isPressed : keyboard.nKey.isPressed;
+        }
+
         // Cover is a hold, so it's polled in FixedUpdate against the fighter's
         // actual IsCovering state, not captured as an edge.
         private void UpdateCover()
@@ -173,6 +275,11 @@ namespace TheLift.Game
             dir = Vector3.ClampMagnitude(dir, 1f);
 
             float speed = fighterController.Fighter.Body.MoveSpeed;
+            if (fighterController.Fighter.IsGivingGround)
+            {
+                speed *= giveGroundSpeedMultiplier;
+            }
+
             Vector3 pos = transform.position + dir * speed * Time.fixedDeltaTime;
             pos.x = Mathf.Clamp(pos.x, -ArenaBound, ArenaBound);
             pos.z = Mathf.Clamp(pos.z, -ArenaBound, ArenaBound);
