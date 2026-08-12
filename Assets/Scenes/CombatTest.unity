@@ -396,6 +396,7 @@ GameObject:
   - component: {fileID: 154310411}
   - component: {fileID: 154310410}
   - component: {fileID: 154310414}
+  - component: {fileID: 154310415}
   m_Layer: 0
   m_Name: Fighter_A
   m_TagString: Untagged
@@ -512,6 +513,21 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Game::TheLift.Game.FighterController
   archetype: 0
+--- !u!114 &154310415
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 154310409}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c8168093ec881834491889de1269e2af, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Game::TheLift.Game.FighterInput
+  fighterController: {fileID: 154310414}
+  opponent: {fileID: 769767286}
+  controlSlot: 0
 --- !u!1 &622337568
 GameObject:
   m_ObjectHideFlags: 0
@@ -637,6 +653,7 @@ GameObject:
   - component: {fileID: 769767284}
   - component: {fileID: 769767283}
   - component: {fileID: 769767287}
+  - component: {fileID: 769767288}
   m_Layer: 0
   m_Name: Fighter_B
   m_TagString: Untagged
@@ -753,6 +770,21 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Game::TheLift.Game.FighterController
   archetype: 2
+--- !u!114 &769767288
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 769767282}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c8168093ec881834491889de1269e2af, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Game::TheLift.Game.FighterInput
+  fighterController: {fileID: 769767287}
+  opponent: {fileID: 154310413}
+  controlSlot: 1
 --- !u!1 &921288976
 GameObject:
   m_ObjectHideFlags: 0

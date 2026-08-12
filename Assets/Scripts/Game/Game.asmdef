@@ -2,7 +2,8 @@
     "name": "Game",
     "rootNamespace": "",
     "references": [
-        "CombatCore"
+        "CombatCore",
+        "Unity.InputSystem"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
