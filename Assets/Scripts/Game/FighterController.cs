@@ -13,9 +13,6 @@ namespace TheLift.Game
         private void Awake()
         {
             Fighter = new Fighter(archetype: archetype);
-
-            // TEMPORARY verification — delete once the HUD exists.
-            Debug.Log($"{name}: archetype={archetype}, MaxStamina={Fighter.Body.MaxStamina}, MaxComposure={Fighter.Body.MaxComposure}");
         }
     }
 }
