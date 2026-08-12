@@ -1042,6 +1042,7 @@ MonoBehaviour:
   fighterA: {fileID: 154310414}
   fighterB: {fileID: 769767287}
   seed: 12345
+  strikeRange: 2.5
 --- !u!4 &1315852806
 Transform:
   m_ObjectHideFlags: 0

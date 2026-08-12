@@ -1,3 +1,4 @@
+using TheLift.CombatCore;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.Utilities;
@@ -12,19 +13,72 @@ namespace TheLift.Game
 
         private const float ArenaBound = 14f;
 
+        private ActionType? _pendingIntent;
+
+        private void Update()
+        {
+            ReadStrikeInput();
+        }
+
         private void FixedUpdate()
         {
             Vector2 moveInput = ReadMoveInput();
             Move(moveInput);
             FaceOpponent();
+
+            if (_pendingIntent.HasValue)
+            {
+                fighterController.Fighter.TryStartAction(_pendingIntent.Value);
+                _pendingIntent = null;
+            }
+        }
+
+        private Gamepad GetAssignedGamepad()
+        {
+            ReadOnlyArray<Gamepad> gamepads = Gamepad.all;
+            return controlSlot == 0
+                ? (gamepads.Count > 0 ? gamepads[0] : null)
+                : (gamepads.Count > 1 ? gamepads[1] : null);
+        }
+
+        // CRITICAL: presses are captured as edges here in Update(), not FixedUpdate —
+        // wasPressedThisFrame is only reliable once per rendered frame.
+        private void ReadStrikeInput()
+        {
+            Gamepad gamepad = GetAssignedGamepad();
+
+            bool lightPressed;
+            bool heavyPressed;
+
+            if (gamepad != null)
+            {
+                lightPressed = gamepad.buttonWest.wasPressedThisFrame;
+                heavyPressed = gamepad.buttonNorth.wasPressedThisFrame;
+            }
+            else
+            {
+                Keyboard keyboard = Keyboard.current;
+                if (keyboard == null) return;
+
+                if (controlSlot == 0)
+                {
+                    lightPressed = keyboard.fKey.wasPressedThisFrame;
+                    heavyPressed = keyboard.gKey.wasPressedThisFrame;
+                }
+                else
+                {
+                    lightPressed = keyboard.uKey.wasPressedThisFrame;
+                    heavyPressed = keyboard.oKey.wasPressedThisFrame;
+                }
+            }
+
+            if (heavyPressed) _pendingIntent = ActionType.Heavy;
+            else if (lightPressed) _pendingIntent = ActionType.Light;
         }
 
         private Vector2 ReadMoveInput()
         {
-            ReadOnlyArray<Gamepad> gamepads = Gamepad.all;
-            Gamepad gamepad = controlSlot == 0
-                ? (gamepads.Count > 0 ? gamepads[0] : null)
-                : (gamepads.Count > 1 ? gamepads[1] : null);
+            Gamepad gamepad = GetAssignedGamepad();
 
             if (gamepad != null)
             {
