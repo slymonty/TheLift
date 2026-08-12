@@ -17,6 +17,7 @@ namespace TheLift.Game
         private const float ShovePushDistance = 2f;
 
         private FighterController _opponentController;
+        private Camera _mainCamera;
 
         private ActionType? _pendingIntent;
         private bool _slipPending;
@@ -28,6 +29,8 @@ namespace TheLift.Game
             {
                 _opponentController = opponent.GetComponent<FighterController>();
             }
+
+            _mainCamera = Camera.main;
         }
 
         private void Update()
@@ -269,10 +272,29 @@ namespace TheLift.Game
             }
         }
 
+        private Vector3 BuildCameraRelativeDirection(Vector2 input)
+        {
+            Vector3 camForward = Vector3.forward;
+            Vector3 camRight = Vector3.right;
+
+            if (_mainCamera != null)
+            {
+                camForward = _mainCamera.transform.forward;
+                camRight = _mainCamera.transform.right;
+            }
+
+            camForward.y = 0f;
+            camRight.y = 0f;
+            camForward.Normalize();
+            camRight.Normalize();
+
+            Vector3 dir = camForward * input.y + camRight * input.x;
+            return Vector3.ClampMagnitude(dir, 1f);
+        }
+
         private void Move(Vector2 input)
         {
-            Vector3 dir = new Vector3(input.x, 0f, input.y);
-            dir = Vector3.ClampMagnitude(dir, 1f);
+            Vector3 dir = BuildCameraRelativeDirection(input);
 
             float speed = fighterController.Fighter.Body.MoveSpeed;
             if (fighterController.Fighter.IsGivingGround)

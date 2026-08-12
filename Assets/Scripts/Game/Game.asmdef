@@ -3,7 +3,8 @@
     "rootNamespace": "",
     "references": [
         "CombatCore",
-        "Unity.InputSystem"
+        "Unity.InputSystem",
+        "Unity.Cinemachine"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
