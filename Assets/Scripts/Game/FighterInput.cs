@@ -14,10 +14,12 @@ namespace TheLift.Game
         private const float ArenaBound = 14f;
 
         private ActionType? _pendingIntent;
+        private bool _slipPending;
 
         private void Update()
         {
             ReadStrikeInput();
+            ReadSlipInput();
         }
 
         private void FixedUpdate()
@@ -31,6 +33,14 @@ namespace TheLift.Game
                 fighterController.Fighter.TryStartAction(_pendingIntent.Value);
                 _pendingIntent = null;
             }
+
+            if (_slipPending)
+            {
+                fighterController.Fighter.TrySlip();
+                _slipPending = false;
+            }
+
+            UpdateCover();
         }
 
         private Gamepad GetAssignedGamepad()
@@ -74,6 +84,60 @@ namespace TheLift.Game
 
             if (heavyPressed) _pendingIntent = ActionType.Heavy;
             else if (lightPressed) _pendingIntent = ActionType.Light;
+        }
+
+        // CRITICAL: same edge-capture rule as strikes — Slip is a tap, read in Update().
+        private void ReadSlipInput()
+        {
+            Gamepad gamepad = GetAssignedGamepad();
+
+            bool slipPressed;
+
+            if (gamepad != null)
+            {
+                slipPressed = gamepad.buttonSouth.wasPressedThisFrame;
+            }
+            else
+            {
+                Keyboard keyboard = Keyboard.current;
+                if (keyboard == null) return;
+
+                slipPressed = controlSlot == 0
+                    ? keyboard.cKey.wasPressedThisFrame
+                    : keyboard.hKey.wasPressedThisFrame;
+            }
+
+            if (slipPressed) _slipPending = true;
+        }
+
+        // Cover is a hold, so it's polled in FixedUpdate against the fighter's
+        // actual IsCovering state, not captured as an edge.
+        private void UpdateCover()
+        {
+            Gamepad gamepad = GetAssignedGamepad();
+
+            bool coverHeld;
+
+            if (gamepad != null)
+            {
+                coverHeld = gamepad.leftShoulder.isPressed;
+            }
+            else
+            {
+                Keyboard keyboard = Keyboard.current;
+                coverHeld = keyboard != null &&
+                    (controlSlot == 0 ? keyboard.vKey.isPressed : keyboard.pKey.isPressed);
+            }
+
+            Fighter fighter = fighterController.Fighter;
+            if (coverHeld && !fighter.IsCovering)
+            {
+                fighter.StartCover();
+            }
+            else if (!coverHeld && fighter.IsCovering)
+            {
+                fighter.StopCover();
+            }
         }
 
         private Vector2 ReadMoveInput()
